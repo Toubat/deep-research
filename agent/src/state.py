@@ -20,24 +20,25 @@ class AgentState(BaseModel):
 
     user_input: str = Field(description="The original user question")
 
-    ask_clarification: bool = Field(
-        default=True, description="Whether the agent should ask for clarification"
+    background_search_queries: list[str] = Field(
+        default_factory=list,
+        description="The search queries to search background of the user's query",
     )
 
-    clarify_search_queries: list[str] = Field(
+    background_search_results: Annotated[list[str], merge_search_results] = Field(
         default_factory=list,
-        description="The search queries to clarify the user's query",
-    )
-
-    clarify_search_results: Annotated[list[str], merge_search_results] = Field(
-        default_factory=list,
-        description="The search results for the clarify search queries",
+        description="The search results for the background search queries",
     )
 
     # https://langchain-ai.github.io/langgraph/concepts/low_level/?h=message#why-use-messages
-    clarify_messages: Annotated[list[AnyMessage], add_messages] = Field(
-        default_factory=list, description="The messages for the clarify search queries"
+    background_messages: Annotated[list[AnyMessage], add_messages] = Field(
+        default_factory=list,
+        description="The messages for the background search queries",
     )
+
+    clarification_question: str | None = Field(default=None)
+
+    clarification_result: str | None = Field(default=None)
 
 
 class WebSearchInput(BaseModel):

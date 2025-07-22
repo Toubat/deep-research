@@ -1,16 +1,23 @@
 from typing import cast
 
 from dotenv import find_dotenv, load_dotenv
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage
 from langchain_core.messages.tool import tool_call
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    MessagesPlaceholder,
+    PromptTemplate,
+    SystemMessagePromptTemplate,
+)
 from langchain_openai import ChatOpenAI
 from langgraph.config import get_config
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
+from langgraph.types import Send, interrupt
 from src.configuration import Configuration
+from src.mocks import MOCK_STATE_PATCH
 from src.prompts import (
-    CLARIFY_QUERY_GEN_PROMPT,
+    ASK_CLARIFICATION_PROMPT,
+    BACKGROUND_QUERY_GEN_PROMPT,
     CONCAT_SINGLE_SEARCH_RESULT,
     FORMAT_SEARCH_RESULTS,
 )
@@ -24,20 +31,29 @@ tavily_client = TavilyClient()
 
 
 # Graph Nodes
-def generate_clarification_search_query(state: AgentState):
+def init(state: AgentState):
     config = Configuration.from_configurable(get_config())
-    llm = ChatOpenAI(model=config.model, temperature=0.2)
+
+    if config.is_mock:
+        return {"user_input": state.user_input, **MOCK_STATE_PATCH}
+
+    return {}
+
+
+def generate_background_search_query(state: AgentState):
+    config = Configuration.from_configurable(get_config())
+    llm = ChatOpenAI(model=config.reasoning_model)
     structured_llm = llm.with_structured_output(ClarifyQuerySchema)
 
-    prompt_tpl = PromptTemplate.from_template(CLARIFY_QUERY_GEN_PROMPT)
+    prompt_tpl = PromptTemplate.from_template(BACKGROUND_QUERY_GEN_PROMPT)
     chain = prompt_tpl | structured_llm
 
     result = cast(ClarifyQuerySchema, chain.invoke({"user_input": state.user_input}))
-    return {"clarify_search_queries": result.clarify_search_queries}
+    return {"background_search_queries": result.clarify_search_queries}
 
 
 def web_search(state: WebSearchInput):
-    response = tavily_client.search("Who is Leo Messi?", search_depth="basic")
+    response = tavily_client.search(state.search_query, search_depth="basic")
 
     concat_search_result_prompt = PromptTemplate.from_template(
         template=CONCAT_SINGLE_SEARCH_RESULT,
@@ -48,7 +64,7 @@ def web_search(state: WebSearchInput):
         search_results=response["results"]
     )
 
-    return {"clarify_search_results": [concat_search_result]}
+    return {"background_search_results": [concat_search_result]}
 
 
 def append_search_results(state: AgentState):
@@ -57,7 +73,7 @@ def append_search_results(state: AgentState):
     tool_call_dict = tool_call(
         id=tool_call_id,
         name="web_search",
-        args={"query": state.clarify_search_queries},
+        args={"query": state.background_search_queries},
     )
 
     search_result_prompt = PromptTemplate.from_template(
@@ -65,42 +81,87 @@ def append_search_results(state: AgentState):
         template_format="jinja2",
     )
 
-    tool_call_message = AIMessage(content=[tool_call_dict])  # type: ignore
+    tool_call_message = AIMessage(content=str(tool_call_dict))  # type: ignore
 
-    tool_output = ToolMessage(
-        tool_call_id=tool_call_id,
+    tool_output = AIMessage(
         content=search_result_prompt.format(
-            search_results=state.clarify_search_results
+            search_results=state.background_search_results
         ),
     )
 
-    return {"clarify_messages": [tool_call_message, tool_output]}
+    return {"background_messages": [tool_call_message, tool_output]}
+
+
+async def ask_clarify_from_user(state: AgentState):
+    config = Configuration.from_configurable(get_config())
+    llm = ChatOpenAI(model=config.reasoning_model)
+
+    background_messages = state.background_messages
+
+    clarify_prompt = ChatPromptTemplate.from_messages(
+        [
+            SystemMessagePromptTemplate.from_template(
+                template=ASK_CLARIFICATION_PROMPT
+            ),
+            MessagesPlaceholder(variable_name="background_messages"),
+            AIMessage(
+                content="Now I have finished background queries, I will generate a clarification to user"
+            ),
+        ]
+    )
+
+    chain = clarify_prompt | llm
+    clarification_question = await chain.ainvoke(
+        {"user_input": state.user_input, "background_messages": background_messages}
+    )
+
+    clarification_result = interrupt({"questions": clarification_question})
+
+    return {
+        "clarification_result": clarification_result,
+        "clarification_question": clarification_question,
+    }
 
 
 # Graph Edges
 def continue_search_background_info(state: AgentState):
     return [
         Send("web_search", WebSearchInput(query_idx=idx, search_query=query))
-        for idx, query in enumerate(state.clarify_search_queries)
+        for idx, query in enumerate(state.background_search_queries)
     ]
+
+
+def decide_enterance(state: AgentState):
+    config = Configuration.from_configurable(get_config())
+
+    if config.is_mock:
+        return END
+    else:
+        return "background_search"
 
 
 graph_builder = StateGraph(AgentState, Configuration)
 
-graph_builder.add_node(
-    "generate_clarification_search_query", generate_clarification_search_query
-)
+graph_builder.add_node("init", init)
+graph_builder.add_node("background_search", generate_background_search_query)
 graph_builder.add_node("web_search", web_search)
 graph_builder.add_node("append_search_results", append_search_results)
+graph_builder.add_node("ask_clarify_from_user", ask_clarify_from_user)
 
-graph_builder.add_edge(START, "generate_clarification_search_query")
+graph_builder.add_edge(START, "init")
 graph_builder.add_conditional_edges(
-    "generate_clarification_search_query",
+    "init",
+    decide_enterance,  # type: ignore
+    ["background_search", END],
+)
+graph_builder.add_conditional_edges(
+    "background_search",
     continue_search_background_info,  # type: ignore
     ["web_search"],
 )
 graph_builder.add_edge("web_search", "append_search_results")
-graph_builder.add_edge("append_search_results", END)
+graph_builder.add_edge("append_search_results", "ask_clarify_from_user")
+graph_builder.add_edge("ask_clarify_from_user", END)
 
 
 graph = graph_builder.compile()

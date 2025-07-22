@@ -5,7 +5,7 @@ from typing import Literal
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
-ModelType = Literal["gpt-4.1"]
+ModelType = Literal["gpt-4.1", "o4-mini"]
 
 
 class Configuration(BaseModel):
@@ -16,6 +16,12 @@ class Configuration(BaseModel):
     model: ModelType = Field(
         default="gpt-4.1", description="The model to use for the Deep Researcher Agent"
     )
+
+    reasoning_model: ModelType = Field(
+        default="o4-mini", description="The model to use for the Deep Researcher Agent"
+    )
+
+    is_mock: bool = Field(default=True)
 
     @classmethod
     def from_configurable(cls, config: RunnableConfig) -> Configuration:
