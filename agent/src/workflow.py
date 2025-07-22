@@ -1,6 +1,10 @@
+import os
+
+import requests
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages.tool import tool_call
 from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
 from langgraph.config import get_config
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -12,26 +16,61 @@ from src.utils import random_id
 
 # Graph Nodes
 def generate_clarification_search_query(state: AgentState):
-    config = Configuration.from_configurable(get_config())
+    from pydantic import BaseModel, Field
 
+    class ClarifyQuerySchema(BaseModel):
+        clarify_search_queries: list[str] = Field(
+            ..., description="List of 2-3 relevant search queries"
+        )
+
+    config = Configuration.from_configurable(get_config())
+    llm = ChatOpenAI(model=config.model, temperature=0.7)
+    structured_llm = llm.with_structured_output(ClarifyQuerySchema)
+
+    prompt = f"""
+    You are a helpful research assistant. Based on the user's question: "{state.user_input}",
+    generate 2 or 3 search queries that would help clarify or expand on the topic.
+    """
+
+    result = structured_llm.invoke(prompt)
+    return result.dict()
     # TODO: Implement the logic to generate the clarification search query
     """
     1. Define a pydantic schema and use llm.with_structured_output to generate the schema
     https://python.langchain.com/docs/concepts/structured_outputs/
     """
 
-    return {"clarify_search_queries": ["Search query 1", "Search query 2"]}
-
 
 def web_search(state: WebSearchInput):
     query = state.search_query
+    api_key = os.getenv("TAVILY_API_KEY")
 
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    payload = {"query": query, "search_depth": "basic", "include_answer": False}
+
+    response = requests.post(
+        "https://api.tavily.com/search", json=payload, headers=headers
+    )
+
+    if response.status_code != 200:
+        return {
+            "clarify_search_results": [f"Error: {response.text}"],
+            "clarify_messages": [],
+        }
+    data = response.json()
+    results = []
+
+    for result in data.get("results", []):
+        title = result.get("title", "No Title")
+        url = result.get("url", "No URL")
+        results.append(f"{title} - {url}")
+
+    return {"clarify_search_results": results, "clarify_messages": []}
     # TODO: Invoke the web search API
     # https://docs.firecrawl.dev/features/search#performing-a-search-with-firecrawl
 
     # Playground: https://www.firecrawl.dev/app/playground?mode=search&searchQuery=MCP&searchLimit=5&searchScrapeContent=true&formats=markdown&parsePDF=true&maxAge=14400000
-
-    return {"clarify_search_results": [f"Search result of query: {query}"]}
 
 
 def append_search_results(state: AgentState):

@@ -17,6 +17,8 @@ class AgentState(BaseModel):
     """
     State for Deep Researcher Agent
     """
+    user_input: str = Field(description="The original user question")
+
 
     ask_clarification: bool = Field(
         default=True, description="Whether the agent should ask for clarification"
