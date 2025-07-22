@@ -123,6 +123,18 @@ async def ask_clarify_from_user(state: AgentState):
     }
 
 
+async def formulate_report_sections(state: AgentState):
+    # take user_input, clarification_question, clarification_result, background_search_queries, background_search_results
+    # ask LLM design report sections (title, description as detailed as possible)
+    # sections = [
+    #    {
+    #       "title": string.
+    #       "description": string
+    #    } // use pydantic structured output
+    # ]
+    pass
+
+
 # Graph Edges
 def continue_search_background_info(state: AgentState):
     return [
