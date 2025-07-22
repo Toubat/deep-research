@@ -13,8 +13,6 @@ from src.prompts import FORMAT_SEARCH_RESULTS
 from src.state import AgentState, WebSearchInput
 from src.utils import random_id
 
-from agent.src.state import WebSearchInput
-
 
 # Graph Nodes
 def generate_clarification_search_query(state: AgentState):
@@ -60,7 +58,6 @@ def web_search(state: WebSearchInput):
             "clarify_search_results": [f"Error: {response.text}"],
             "clarify_messages": [],
         }
-
     data = response.json()
     results = []
 
