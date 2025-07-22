@@ -1,6 +1,6 @@
-import os
+from typing import cast
 
-import requests
+from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages.tool import tool_call
 from langchain_core.prompts import PromptTemplate
@@ -9,68 +9,46 @@ from langgraph.config import get_config
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 from src.configuration import Configuration
-from src.prompts import FORMAT_SEARCH_RESULTS
-from src.state import AgentState, WebSearchInput
+from src.prompts import (
+    CLARIFY_QUERY_GEN_PROMPT,
+    CONCAT_SINGLE_SEARCH_RESULT,
+    FORMAT_SEARCH_RESULTS,
+)
+from src.state import AgentState, ClarifyQuerySchema, WebSearchInput
 from src.utils import random_id
+from tavily import TavilyClient
+
+load_dotenv(find_dotenv(), override=True)
+
+tavily_client = TavilyClient()
 
 
 # Graph Nodes
 def generate_clarification_search_query(state: AgentState):
-    from pydantic import BaseModel, Field
-
-    class ClarifyQuerySchema(BaseModel):
-        clarify_search_queries: list[str] = Field(
-            ..., description="List of 2-3 relevant search queries"
-        )
-
     config = Configuration.from_configurable(get_config())
-    llm = ChatOpenAI(model=config.model, temperature=0.7)
+    llm = ChatOpenAI(model=config.model, temperature=0.2)
     structured_llm = llm.with_structured_output(ClarifyQuerySchema)
 
-    prompt = f"""
-    You are a helpful research assistant. Based on the user's question: "{state.user_input}",
-    generate 2 or 3 search queries that would help clarify or expand on the topic.
-    """
+    prompt_tpl = PromptTemplate.from_template(CLARIFY_QUERY_GEN_PROMPT)
+    chain = prompt_tpl | structured_llm
 
-    result = structured_llm.invoke(prompt)
-    return result.dict()
-    # TODO: Implement the logic to generate the clarification search query
-    """
-    1. Define a pydantic schema and use llm.with_structured_output to generate the schema
-    https://python.langchain.com/docs/concepts/structured_outputs/
-    """
+    result = cast(ClarifyQuerySchema, chain.invoke({"user_input": state.user_input}))
+    return {"clarify_search_queries": result.clarify_search_queries}
 
 
 def web_search(state: WebSearchInput):
-    query = state.search_query
-    api_key = os.getenv("TAVILY_API_KEY")
+    response = tavily_client.search("Who is Leo Messi?", search_depth="basic")
 
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-
-    payload = {"query": query, "search_depth": "basic", "include_answer": False}
-
-    response = requests.post(
-        "https://api.tavily.com/search", json=payload, headers=headers
+    concat_search_result_prompt = PromptTemplate.from_template(
+        template=CONCAT_SINGLE_SEARCH_RESULT,
+        template_format="jinja2",
     )
 
-    if response.status_code != 200:
-        return {
-            "clarify_search_results": [f"Error: {response.text}"],
-            "clarify_messages": [],
-        }
-    data = response.json()
-    results = []
+    concat_search_result = concat_search_result_prompt.format(
+        search_results=response["results"]
+    )
 
-    for result in data.get("results", []):
-        title = result.get("title", "No Title")
-        url = result.get("url", "No URL")
-        results.append(f"{title} - {url}")
-
-    return {"clarify_search_results": results, "clarify_messages": []}
-    # TODO: Invoke the web search API
-    # https://docs.firecrawl.dev/features/search#performing-a-search-with-firecrawl
-
-    # Playground: https://www.firecrawl.dev/app/playground?mode=search&searchQuery=MCP&searchLimit=5&searchScrapeContent=true&formats=markdown&parsePDF=true&maxAge=14400000
+    return {"clarify_search_results": [concat_search_result]}
 
 
 def append_search_results(state: AgentState):

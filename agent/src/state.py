@@ -17,8 +17,8 @@ class AgentState(BaseModel):
     """
     State for Deep Researcher Agent
     """
-    user_input: str = Field(description="The original user question")
 
+    user_input: str = Field(description="The original user question")
 
     ask_clarification: bool = Field(
         default=True, description="Whether the agent should ask for clarification"
@@ -47,3 +47,9 @@ class WebSearchInput(BaseModel):
 
     query_idx: int = Field(description="The index of the search query")
     search_query: str = Field(description="The search query to search the web for")
+
+
+class ClarifyQuerySchema(BaseModel):
+    clarify_search_queries: list[str] = Field(
+        ..., description="List of 2-3 relevant search queries"
+    )

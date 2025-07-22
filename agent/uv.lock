@@ -19,6 +19,7 @@ dependencies = [
     { name = "langgraph-cli", extra = ["inmem"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "tavily-python" },
 ]
 
 [package.metadata]
@@ -31,6 +32,7 @@ requires-dist = [
     { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.3.4" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "tavily-python", specifier = ">=0.7.10" },
 ]
 
 [[package]]
@@ -1240,6 +1242,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/79/b9/6e672db4fec07349e7a8a8172c1a6ae235c58679ca29c3f86a61b5e59ff3/structlog-25.4.0.tar.gz", hash = "sha256:186cd1b0a8ae762e29417095664adf1d6a31702160a46dacb7796ea82f7409e4", size = 1369138, upload-time = "2025-06-02T08:21:12.971Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/4a/97ee6973e3a73c74c8120d59829c3861ea52210667ec3e7a16045c62b64d/structlog-25.4.0-py3-none-any.whl", hash = "sha256:fe809ff5c27e557d14e613f45ca441aabda051d119ee5a0102aaba6ce40eed2c", size = 68720, upload-time = "2025-06-02T08:21:11.43Z" },
+]
+
+[[package]]
+name = "tavily-python"
+version = "0.7.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "requests" },
+    { name = "tiktoken" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/0e/d4aa0f4dec298298b510ee5209f5ff29352bbbba106fd7ea0221ba8840dc/tavily_python-0.7.10.tar.gz", hash = "sha256:c87b4c0549ab2e416cf4ac3da8fe3ce5db106288408b06e197d4b5ba8ec7ead9", size = 19275, upload-time = "2025-07-17T23:57:01.239Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/60/4c4678a28b3b5061aa2ab45b215290d3a71810e7996bafdf6b7313e75fb3/tavily_python-0.7.10-py3-none-any.whl", hash = "sha256:a99958e14dd091271611be7fb1e1a8a86f5bff3a9022b9626f4c4f1513338088", size = 15786, upload-time = "2025-07-17T23:56:58.404Z" },
 ]
 
 [[package]]
