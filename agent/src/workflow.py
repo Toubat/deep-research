@@ -1,6 +1,10 @@
+import os
+
+import requests
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages.tool import tool_call
 from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
 from langgraph.config import get_config
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -8,16 +12,12 @@ from src.configuration import Configuration
 from src.prompts import FORMAT_SEARCH_RESULTS
 from src.state import AgentState, WebSearchInput
 from src.utils import random_id
-from langchain_openai import ChatOpenAI
-import os
-import requests
-from agent.src.state import WebSearchInput
 
+from agent.src.state import WebSearchInput
 
 
 # Graph Nodes
 def generate_clarification_search_query(state: AgentState):
-    from langchain_openai import ChatOpenAI
     from pydantic import BaseModel, Field
 
     class ClarifyQuerySchema(BaseModel):
@@ -43,28 +43,22 @@ def generate_clarification_search_query(state: AgentState):
     """
 
 
-
 def web_search(state: WebSearchInput):
     query = state.search_query
     api_key = os.getenv("TAVILY_API_KEY")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    payload = {
-        "query": query,
-        "search_depth": "basic",
-        "include_answer": False
-    }
+    payload = {"query": query, "search_depth": "basic", "include_answer": False}
 
-    response = requests.post("https://api.tavily.com/search", json=payload, headers=headers)
+    response = requests.post(
+        "https://api.tavily.com/search", json=payload, headers=headers
+    )
 
     if response.status_code != 200:
         return {
             "clarify_search_results": [f"Error: {response.text}"],
-            "clarify_messages": []
+            "clarify_messages": [],
         }
 
     data = response.json()
@@ -75,16 +69,11 @@ def web_search(state: WebSearchInput):
         url = result.get("url", "No URL")
         results.append(f"{title} - {url}")
 
-    return {
-        "clarify_search_results": results,
-        "clarify_messages": []
-    }
+    return {"clarify_search_results": results, "clarify_messages": []}
     # TODO: Invoke the web search API
     # https://docs.firecrawl.dev/features/search#performing-a-search-with-firecrawl
 
     # Playground: https://www.firecrawl.dev/app/playground?mode=search&searchQuery=MCP&searchLimit=5&searchScrapeContent=true&formats=markdown&parsePDF=true&maxAge=14400000
-
-    
 
 
 def append_search_results(state: AgentState):
