@@ -3,6 +3,7 @@ from typing import Annotated
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
+from typing import List
 
 
 def merge_search_results(curr_results: list[str], new_results: list[str]) -> list[str]:
@@ -54,3 +55,10 @@ class ClarifyQuerySchema(BaseModel):
     clarify_search_queries: list[str] = Field(
         ..., description="List of 2-3 relevant search queries"
     )
+
+class ReportSection(BaseModel):
+    title: str
+    description: str
+
+class ReportSectionSchema(BaseModel):
+    sections: List[ReportSection]

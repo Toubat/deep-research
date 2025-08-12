@@ -1,4 +1,5 @@
 from typing import cast
+from agent.src.state import ReportSectionSchema
 
 from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage
@@ -132,7 +133,18 @@ async def formulate_report_sections(state: AgentState):
     #       "description": string
     #    } // use pydantic structured output
     # ]
-    pass
+    config = Configuration.from_configurable(get_config())
+    llm = ChatOpenAI(model=config.model, temperature=0.3)
+    structured_llm = llm.with_structured_output(ReportSectionSchema)
+    prompt = f"""
+    Based on the user's research query: "{state.user_input}"
+    and the clarification focus: "{state.clarify_search_queries}",
+
+    Generate a list of 4 to 6 report section titles that would form a complete research report.
+    Each title should be concise and informative, with detailed descriptions.
+    """
+    result = await structured_llm.ainvoke(prompt)
+    return {"report_sections": result.sections}
 
 
 # Graph Edges
@@ -158,6 +170,7 @@ graph_builder.add_node("init", init)
 graph_builder.add_node("background_search", generate_background_search_query)
 graph_builder.add_node("web_search", web_search)
 graph_builder.add_node("append_search_results", append_search_results)
+graph_builder.add_node("generate_report_sections", formulate_report_sections)
 graph_builder.add_node("ask_clarify_from_user", ask_clarify_from_user)
 
 graph_builder.add_edge(START, "init")
@@ -172,7 +185,8 @@ graph_builder.add_conditional_edges(
     ["web_search"],
 )
 graph_builder.add_edge("web_search", "append_search_results")
-graph_builder.add_edge("append_search_results", "ask_clarify_from_user")
+graph_builder.add_edge("append_search_results", "generate_report_sections")
+graph_builder.add_edge("generate_report_sections", "ask_clarify_from_user") 
 graph_builder.add_edge("ask_clarify_from_user", END)
 
 
