@@ -62,4 +62,6 @@ MOCK_STATE_PATCH = dict(
     background_messages=[],
     clarification_question=MOCK_CLARIFICATION_QUESTION,
     clarification_result=MOCK_CLARIFICATION_RESULT,
+    report_sections=[],
+    research_results={},
 )

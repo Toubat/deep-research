@@ -41,3 +41,22 @@ This will help me find the best options for you.
 
 User has asked for "{user_input}"
 """
+
+
+RESEARCH_CONTEXT = """\
+## User Initial Query
+{{ user_input }}
+
+## Background Search Queries
+{% for query in background_search_queries %}
+- {{ query }}
+{% endfor %}
+
+## Background Search Results
+{% for result in background_search_results %}
+{{ result }}
+{% endfor %}
+
+## Research Direction
+{{ clarification_result }}
+"""

@@ -1,5 +1,4 @@
 from typing import cast
-from agent.src.state import ReportSectionSchema
 
 from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage
@@ -12,7 +11,8 @@ from langchain_core.prompts import (
 )
 from langchain_openai import ChatOpenAI
 from langgraph.config import get_config
-from langgraph.graph import END, START, StateGraph
+from langgraph.constants import END
+from langgraph.graph import START, StateGraph
 from langgraph.types import Send, interrupt
 from src.configuration import Configuration
 from src.mocks import MOCK_STATE_PATCH
@@ -21,8 +21,17 @@ from src.prompts import (
     BACKGROUND_QUERY_GEN_PROMPT,
     CONCAT_SINGLE_SEARCH_RESULT,
     FORMAT_SEARCH_RESULTS,
+    RESEARCH_CONTEXT,
 )
-from src.state import AgentState, ClarifyQuerySchema, WebSearchInput
+from src.research_agent import create_research_agent
+from src.state import (
+    AgentState,
+    ClarifyQuerySchema,
+    ReportSectionSchema,
+    ResearchAgentState,
+    SectionResult,
+    WebSearchInput,
+)
 from src.utils import random_id
 from tavily import TavilyClient
 
@@ -136,15 +145,41 @@ async def formulate_report_sections(state: AgentState):
     config = Configuration.from_configurable(get_config())
     llm = ChatOpenAI(model=config.model, temperature=0.3)
     structured_llm = llm.with_structured_output(ReportSectionSchema)
+
+    # TODO: improve the prompt
     prompt = f"""
     Based on the user's research query: "{state.user_input}"
-    and the clarification focus: "{state.clarify_search_queries}",
+    and the clarification focus: "{state.clarification_result}",
 
     Generate a list of 4 to 6 report section titles that would form a complete research report.
     Each title should be concise and informative, with detailed descriptions.
     """
     result = await structured_llm.ainvoke(prompt)
     return {"report_sections": result.sections}
+
+
+def merge_research_section_results(state: AgentState):
+    section_results = []
+
+    for section in state.report_sections:
+        section_results.append(
+            SectionResult(
+                title=section.title,
+                description=section.description,
+                content=state.research_results[section.title],
+            )
+        )
+
+    return {"section_results": section_results}
+
+
+def generate_intro_or_conclusion(state: AgentState):
+    # TODO: call llm twice to generate report section
+
+    return {
+        "intro_section": "mock intro section",
+        "conclusion_section": "mock conclusion section",
+    }
 
 
 # Graph Edges
@@ -155,11 +190,38 @@ def continue_search_background_info(state: AgentState):
     ]
 
 
+def continue_research_agent(state: AgentState):
+    prompt = PromptTemplate.from_template(
+        template=RESEARCH_CONTEXT, template_format="jinja2"
+    )
+
+    research_context = prompt.invoke(
+        {
+            "user_input": state.user_input,
+            "background_search_queries": state.background_search_queries,
+            "background_search_results": state.background_search_results,
+            "clarification_result": state.clarification_result,
+        }
+    ).to_string()
+
+    return [
+        Send(
+            "research_agent",
+            ResearchAgentState(
+                research_context=research_context,
+                topic=section.title,
+                description=section.description,
+            ),
+        )
+        for section in state.report_sections
+    ]
+
+
 def decide_enterance(state: AgentState):
     config = Configuration.from_configurable(get_config())
 
     if config.is_mock:
-        return END
+        return "generate_report_sections"
     else:
         return "background_search"
 
@@ -172,12 +234,15 @@ graph_builder.add_node("web_search", web_search)
 graph_builder.add_node("append_search_results", append_search_results)
 graph_builder.add_node("generate_report_sections", formulate_report_sections)
 graph_builder.add_node("ask_clarify_from_user", ask_clarify_from_user)
+graph_builder.add_node("research_agent", create_research_agent())
+graph_builder.add_node("merge_research_section_results", merge_research_section_results)
+graph_builder.add_node("generate_intro_or_conclusion", generate_intro_or_conclusion)
 
 graph_builder.add_edge(START, "init")
 graph_builder.add_conditional_edges(
     "init",
     decide_enterance,  # type: ignore
-    ["background_search", END],
+    ["background_search", "generate_report_sections"],
 )
 graph_builder.add_conditional_edges(
     "background_search",
@@ -185,9 +250,19 @@ graph_builder.add_conditional_edges(
     ["web_search"],
 )
 graph_builder.add_edge("web_search", "append_search_results")
-graph_builder.add_edge("append_search_results", "generate_report_sections")
-graph_builder.add_edge("generate_report_sections", "ask_clarify_from_user") 
-graph_builder.add_edge("ask_clarify_from_user", END)
+graph_builder.add_edge("append_search_results", "ask_clarify_from_user")
+graph_builder.add_edge(
+    "ask_clarify_from_user",
+    "generate_report_sections",
+)
+graph_builder.add_conditional_edges(
+    "generate_report_sections",
+    continue_research_agent,  # type: ignore
+    ["research_agent"],
+)
+graph_builder.add_edge("research_agent", "merge_research_section_results")
+graph_builder.add_edge("merge_research_section_results", "generate_intro_or_conclusion")
+graph_builder.add_edge("generate_intro_or_conclusion", END)
 
 
 graph = graph_builder.compile()
