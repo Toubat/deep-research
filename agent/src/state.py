@@ -68,7 +68,7 @@ class ResearchAgentState(BaseModel):
     research_context: str
     topic: str
     description: str
-
+    goal: str = Field(default="", description="Measurable objective for this section")
     has_knowledge_gap: bool = Field(default=False)
     draft_content: str = Field(default="test content")
     research_results: dict[str, str] = Field(default_factory=dict)
@@ -92,8 +92,8 @@ class ClarifyQuerySchema(BaseModel):
 class ReportSection(BaseModel):
     title: str
     description: str
-
-
+    goal: str = Field(default="", description="Measurable objective for the section")
+    
 class SectionResult(BaseModel):
     title: str
     description: str

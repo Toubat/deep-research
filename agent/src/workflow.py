@@ -151,8 +151,13 @@ async def formulate_report_sections(state: AgentState):
     Based on the user's research query: "{state.user_input}"
     and the clarification focus: "{state.clarification_result}",
 
-    Generate a list of 4 to 6 report section titles that would form a complete research report.
-    Each title should be concise and informative, with detailed descriptions.
+    Generate a list of 4 to 6 report section objects.
+    Each object must have:
+    - title: concise and informative
+    - description: detailed scope and what to cover
+    - goal: a measurable objective for the section (e.g., "Define LLM in 1 paragraph with 2 real examples and 3 citations")
+
+    Return as structured output conforming to ReportSectionSchema.
     """
     result = await structured_llm.ainvoke(prompt)
     return {"report_sections": result.sections}
@@ -211,6 +216,7 @@ def continue_research_agent(state: AgentState):
                 research_context=research_context,
                 topic=section.title,
                 description=section.description,
+                goal=section.goal,
             ),
         )
         for section in state.report_sections
